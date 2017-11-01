@@ -105,6 +105,9 @@ def set_algo_states(algo, varname, value):
     elif varname == 'init_b_batch_size':
         algo.init_b_batch_size = int(value)
         algo.reinitialize = True
+    elif varname == 'width':
+        algo.width = int(width)
+        algo.reinitialize = True
     else:
         print('Variable %s access is not implemented' %varname)
         exit(0)
@@ -211,6 +214,9 @@ def train_all_and_plot(n_inits, arguments, varname, value_list,
     vvalues = '_'.join(value_list)
     fig.savefig(arguments['<algo>']+'_'+arguments['--paramname']
                      +'_'+pvalues+'_'+varname+'_'+vvalues+'.eps')
+
+
+
 
 
 if __name__ == '__main__':
