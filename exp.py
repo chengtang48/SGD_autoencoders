@@ -2,11 +2,13 @@
 Usage: exp.py <algo> <n_inits> [--paramname=ARG --paramvalues=<ARGS> --varname=ARG --values=<ARGS>]
 """
 from docopt import docopt
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+from six.moves import cPickle as pickle
 from SGD_class import SGD
 from scipy.stats import ortho_group #generator for random orthogonal matrix
 from variable_definition import autoencoder_ops
-import matplotlib.pyplot as plt
-import numpy as np
 ############### Global variables
 data_params = {'data_dim': 2, 'train_batch_size':1,
                 'model': 'sparse_dict', 'model_params':0.1}
@@ -211,10 +213,48 @@ def train_all_and_plot(n_inits, arguments, varname, value_list,
     pvalues = arguments['--paramvalues']
     pvalues_list = pvalues.split(',')
     pvalues = '_'.join(pvalues_list)
+    if varname == 'learn_rate':
+        value_list = ['-'.join(v.split(',')) for v in value_list]
     vvalues = '_'.join(value_list)
     fig.savefig(arguments['<algo>']+'_'+arguments['--paramname']
                      +'_'+pvalues+'_'+varname+'_'+vvalues+'.eps')
 
+def train_all_and_pickle(n_inits, arguments, varname, value_list,
+                            n_runs=10, train_steps=1000, verbose=True):
+    y_array, y_err_array = train_all_against_variables(n_inits, arguments, varname, value_list,
+                                n_runs=n_runs, train_steps=train_steps, verbose=verbose)
+
+    pvalues = arguments['--paramvalues']
+    pvalues_list = pvalues.split(',')
+    pvalues = '_'.join(pvalues_list)
+    if varname == 'learn_rate':
+        value_list = ['-'.join(v.split(',')) for v in value_list]
+    vvalues = '_'.join(value_list)
+    fname = arguments['<algo>']+'_'+arguments['--paramname']+'_'+pvalues+'_'+varname+'_'+vvalues
+    _ = maybe_pickle(fname, data=[y_array, y_err_array])
+
+
+##################################
+# Utility function: pickle or get pickled data with desired dataname
+def maybe_pickle(dataname, data = None, force = False, verbose = True):
+    """
+    Process and pickle a dataset if not present
+    """
+    filename = dataname + '.pickle'
+    if force or not os.path.exists(filename):
+        # pickle the dataset
+        print('Pickling data to file %s' % filename)
+        try:
+            with open(filename, 'wb') as f:
+                pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            print('Unable to save to', filename, ':', e)
+    else:
+        print('%s already present - Skipping pickling.' % filename)
+        with open(filename, 'rb') as f:
+            data = pickle.load(f)
+
+    return data
 
 
 
@@ -233,6 +273,8 @@ if __name__ == '__main__':
             #print('value list', value_list)
         #train_and_plot(algo, varname, value_list, n_runs=10, train_steps=1000, verbose=False)
         n_inits = arguments['<n_inits>']
-        train_all_and_plot(int(n_inits), arguments, varname, value_list,
+        # train_all_and_plot(int(n_inits), arguments, varname, value_list,
+        #                             n_runs=10, train_steps=1000, verbose=False)
+        train_all_and_pickle(int(n_inits), arguments, varname, value_list,
                                     n_runs=10, train_steps=1000, verbose=False)
     ## run the algorithm with n_inits number of different random inits
