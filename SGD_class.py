@@ -54,8 +54,11 @@ class SGD(object):
 		### learning rate params
 		self.eta_fn = eta
 		self.eta_params = (c_prime, t_o)
-		### flag: whether re-initialize at train
+		### flag: whether to re-initialize at train
 		self.reinitialize = False
+
+
+
 	def initialize_parameters(self):
 		if not self.use_same_init_for_network:
 			self.init_weights_ = None

@@ -13,13 +13,19 @@ from variable_definition import autoencoder_ops
 data_params = {'data_dim': 2, 'train_batch_size':1,
                 'model': 'sparse_dict', 'model_params':0.1}
 
-param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
+# param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
+#                'bias': (None, False, None)
+#                  }
+param_inits = {'weights':(4, 'relu', 0),
                'bias': (None, False, None)
                  }
 variable_ops_construction = autoencoder_ops
 ###############
 def initialize_algo(arguments):
     ## parse input args and initialize SGD variants
+    if arguments['--paramname'] == 'data_dim':
+        data_params['data_dim'] = int(arguments['--paramvalues'])
+
     gt_dict = ortho_group.rvs(data_params['data_dim']) # generate ground-truth dictionary
     if arguments['<algo>'] == 'original':
         if arguments['--paramname'] == 'learn_rate':
@@ -108,14 +114,14 @@ def set_algo_states(algo, varname, value):
         algo.init_b_batch_size = int(value)
         algo.reinitialize = True
     elif varname == 'width':
-        algo.width = int(width)
+        algo.width = int(value)
         algo.reinitialize = True
     else:
         print('Variable %s access is not implemented' %varname)
         exit(0)
 
 
-def train_single(algo, n_runs=10, train_steps=1000, verbose=True):
+def train_over_runs(algo, n_runs=10, train_steps=1000, verbose=True):
     # run algorithm n_runs times with same inits (if use_same_init_for_network is True)
     evaluations_over_runs = list()
     for run in range(n_runs):
@@ -124,17 +130,17 @@ def train_single(algo, n_runs=10, train_steps=1000, verbose=True):
     std_evals = np.std(np.array(evaluations_over_runs), axis=0)
     return avg_evals, std_evals
 
-def train_all(arguments, n_inits, n_runs=10, train_steps=1000, verbose=True):
+def train_n_inits_over_runs(arguments, n_inits, n_runs=10, train_steps=1000, verbose=True):
+    # run algorithm n_runs with n_inits different initializations
     evaluations_over_inits = list()
     for _ in range(n_inits):
         algo  = initialize_algo(arguments)
-        evaluations_over_inits.append(train_single(algo, n_runs, train_steps, verbose)[0])
+        evaluations_over_inits.append(train_over_runs(algo, n_runs, train_steps, verbose)[0])
     avg_over_inits = np.mean(np.array(evaluations_over_inits), axis=0)
     std_over_inits = np.std(np.array(evaluations_over_inits), axis=0)
     return avg_over_inits, std_over_inits
 
-def train_against_variable(algo, varname, value_list,
-                            n_runs=10, train_steps=1000, verbose=True):
+def train_n_runs_against_variable(algo, varname, value_list, n_runs=10, train_steps=1000, verbose=True):
     """
     Run algorithm and report the effect of changing a single variable value
     using a single initialization (if use_same_init_for_network is True)
@@ -142,29 +148,42 @@ def train_against_variable(algo, varname, value_list,
     evaluations_over_var = list()
     for value in value_list:
         set_algo_states(algo, varname, value)
-        evaluations_over_var.append(algo.train(train_steps, verbose))
+        evaluations_over_var.append(train_over_runs(algo, n_runs, train_steps, verbose)[0])
     # avg_evals = np.mean(np.array(evaluations_over_var), axis=0)
     # std_evals = np.std(np.array(evaluations_over_var), axis=0)
     return evaluations_over_var
 
-def train_all_against_variables(n_inits, arguments, varname, value_list,
-                            n_runs=10, train_steps=1000, verbose=True):
+def train_n_inits_against_variables(n_inits, arguments, varname, value_list,
+                                  n_runs=10, train_steps=1000, verbose=True):
     """
-    Run train_against_variable n_inits times and averaging over different
+    Run train_one_against_variable n_inits times and averaging over different
     random initializations
     """
     evaluations_over_inits = list()
     for _ in range(n_inits):
         algo  = initialize_algo(arguments)
-        evaluations_over_inits.append(train_against_variable(algo, varname, value_list,
+        evaluations_over_inits.append(train_n_runs_against_variable(algo, varname, value_list,
                                     n_runs, train_steps, verbose))
     avg_over_inits = np.mean(np.array(evaluations_over_inits), axis=0)
     std_over_inits = np.std(np.array(evaluations_over_inits), axis=0)
     return avg_over_inits, std_over_inits
 
+def train_n_inits_against_variables_over_runs(n_inits, arguments, varname, value_list,
+                                  n_runs=10, train_steps=1000, verbose=True):
+    evaluations_over_var = list()
+    arguments['--paramname'] = varname
+    for value in value_list:
+        arguments['--paramvalues'] = value
+        evaluations_over_var.append(train_n_inits_over_runs(arguments,n_inits,n_runs,train_steps,verbose))
+    # avg_evals = np.mean(np.array(evaluations_over_var), axis=0)
+    # std_evals = np.std(np.array(evaluations_over_var), axis=0)
+    print(evaluations_over_var)
+    return evaluations_over_var
+
+
 def train_and_plot(algo, varname, value_list,
                             n_runs=10, train_steps=1000, verbose=True):
-    evaluations_over_var = train_against_variable(algo, varname, value_list,
+    evaluations_over_var = train_n_runs_against_variable(algo, varname, value_list,
                                 n_runs=n_runs, train_steps=train_steps, verbose=verbose)
     cprime, t_o = algo.eta_params
     x = range(t_o, t_o+train_steps+1)
@@ -172,7 +191,7 @@ def train_and_plot(algo, varname, value_list,
     fig, ax = plt.subplots()
     for idx, y in enumerate(evaluations_over_var):
         string = ('%s = %s' %(varname, str(value_list[idx])))
-        ax.plot(x, y, label=string)
+        ax.plot(value_list, y, label=string)
     # ax.plot(time_pts, avg1[:101])
     # ax.plot(time_pts, avg2[:101])
     #ax.errorbar(x, y, yerr=yerr, errorevery=200, label=arguments['<algo>'])
@@ -183,13 +202,17 @@ def train_and_plot(algo, varname, value_list,
 
 def train_all_and_plot(n_inits, arguments, varname, value_list,
                             n_runs=10, train_steps=1000, verbose=True):
-    y_array, y_err_array = train_all_against_variables(n_inits, arguments, varname, value_list,
-                                n_runs=n_runs, train_steps=train_steps, verbose=verbose)
+    # y_array, y_err_array = train_n_inits_against_variables(n_inits, arguments, varname, value_list,
+    #                             n_runs=n_runs, train_steps=train_steps, verbose=verbose)
+    eval_over_values = train_n_inits_against_variables_over_runs(n_inits, arguments, varname, value_list,
+                                      n_runs=10, train_steps=1000, verbose=True)
+    avg_over_values, std_over_values = zip(*eval_over_values)
     cprime, t_o = algo.eta_params
     x = range(t_o, t_o+train_steps+1)
     appx_func = [40/float(t) for t in x]
     fig, ax = plt.subplots()
-    y = y_array[:,-1]
+    y = np.array(avg_over_values)[:,-1]
+    y_err = np.array(std_over_values)[:,-1]
     if varname == 'learn_rate':
         myxticks = value_list
         print(myxticks)
@@ -198,7 +221,9 @@ def train_all_and_plot(n_inits, arguments, varname, value_list,
         ax.set_xticklabels(myxticks)
         ax.scatter(x, y)
     else:
-        ax.scatter(value_list, y)
+        #ax.scatter(value_list, y)
+        ax.plot(value_list, y, 'ro-')
+        ax.set_title(varname)
     # for idx, y in enumerate(y_array.tolist()):
     #     string = ('%s = %s' %(varname, str(value_list[idx])))
     #     y_err = y_err_array[idx]
@@ -221,8 +246,10 @@ def train_all_and_plot(n_inits, arguments, varname, value_list,
 
 def train_all_and_pickle(n_inits, arguments, varname, value_list,
                             n_runs=10, train_steps=1000, verbose=True):
-    y_array, y_err_array = train_all_against_variables(n_inits, arguments, varname, value_list,
-                                n_runs=n_runs, train_steps=train_steps, verbose=verbose)
+    # y_array, y_err_array = train_n_inits_against_variables(n_inits, arguments, varname, value_list,
+    #                             n_runs=n_runs, train_steps=train_steps, verbose=verbose)
+    eval_over_values = train_n_inits_against_variables_over_runs(n_inits, arguments, varname, value_list,
+                                      n_runs, train_steps, verbose)
 
     pvalues = arguments['--paramvalues']
     pvalues_list = pvalues.split(',')
@@ -230,8 +257,9 @@ def train_all_and_pickle(n_inits, arguments, varname, value_list,
     if varname == 'learn_rate':
         value_list = ['-'.join(v.split(',')) for v in value_list]
     vvalues = '_'.join(value_list)
-    fname = arguments['<algo>']+'_'+arguments['--paramname']+'_'+pvalues+'_'+varname+'_'+vvalues
-    _ = maybe_pickle(fname, data=[y_array, y_err_array])
+    width = param_inits['weights'][0]
+    fname = arguments['<algo>']+'_'+arguments['--paramname']+'_'+pvalues+'_'+varname+'_'+vvalues+'width'+str(width)
+    _ = maybe_pickle(fname, data=eval_over_values, force=True)
 
 
 ##################################
