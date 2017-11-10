@@ -12,21 +12,37 @@ from variable_definition import autoencoder_ops
 ############### Global variables
 data_params = {'data_dim': 2, 'train_batch_size':1,
                 'model': 'sparse_dict', 'model_params':0.1}
+#real_data_params = {'train_batch_size':1, 'model': 'cifar10', 'model_params':8}
 
-# param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
-#                'bias': (None, False, None)
-#                  }
-param_inits = {'weights':(4, 'relu', 0),
+param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
                'bias': (None, False, None)
                  }
+# param_inits = {'weights':(4, 'relu', 0),
+#                'bias': (None, False, None)}
 variable_ops_construction = autoencoder_ops
 ###############
-def initialize_algo(arguments):
+def initialize_algo(arguments, use_real=False):
     ## parse input args and initialize SGD variants
     if arguments['--paramname'] == 'data_dim':
         data_params['data_dim'] = int(arguments['--paramvalues'])
+    if arguments['--paramname'] == 'model':
+        data_params['model'] = arguments['--paramvalues']
+    if arguments['--paramname'] == 'model_params':
+        if data_params['model']=='sparse_dict':
+            data_params['model_params'] = float(arguments['--paramvalues'])
+        else:
+            data_params['model_params'] = int(arguments['--paramvalues'])
 
-    gt_dict = ortho_group.rvs(data_params['data_dim']) # generate ground-truth dictionary
+    if not use_real:
+        gt_dict = ortho_group.rvs(data_params['data_dim']) # generate ground-truth dictionary
+    if use_real:
+        _, activation_fn, norm = param_inits['weights']
+        if data_params['model']=='cifar10':
+            data_params['data_dim'] = 2*192 # 3 by 8 by 8
+            param_inits['weights'] = data_params['data_dim'], activation_fn, norm
+        elif data_params['model']=='mnist':
+            data_params['data_dim'] = 2*784 # 28 by 28
+            param_inits['weights'] = data_params['data_dim'], activation_fn, norm
     if arguments['<algo>'] == 'original':
         if arguments['--paramname'] == 'learn_rate':
             argvalues = arguments['--paramvalues']
@@ -40,8 +56,8 @@ def initialize_algo(arguments):
             ## norm value can take 0, meaning no control
             norm = float(arguments['--paramvalues'])
             #global param_inits
-            data_dim, activation_fn, _ = param_inits['weights']
-            param_inits['weights'] = (data_dim, activation_fn, norm)
+            width, activation_fn, _ = param_inits['weights']
+            param_inits['weights'] = (width, activation_fn, norm)
         if arguments['--paramname'] == 'batch_size':
             if len(arguments['--paramvalues'])==1:
                 mb_size = int(arguments['--paramvalues'])
@@ -64,12 +80,12 @@ def initialize_algo(arguments):
             ## norm value can take 0, meaning no control
             norm = float(arguments['--paramvalues'])
             #global param_inits
-            data_dim, activation_fn, _ = param_inits['weights']
-            param_inits['weights'] = (data_dim, activation_fn, norm)
+            width, activation_fn, _ = param_inits['weights']
+            param_inits['weights'] = (width, activation_fn, norm)
         else:
             norm_default = 2
-            data_dim, activation_fn, _ = param_inits['weights']
-            param_inits['weights'] = (data_dim, activation_fn, norm_default)
+            width, activation_fn, _ = param_inits['weights']
+            param_inits['weights'] = (width, activation_fn, norm_default)
             print('Norm set to default value %f' %norm_default)
 
         if arguments['--paramname'] == 'batch_size':
@@ -90,11 +106,12 @@ def initialize_algo(arguments):
             #print('Use mini batch for b?',bool(int(b_params[1])))
             param_inits['bias'] = (int(b_params[0]), bool(int(b_params[1])), int(b_params[2]))
 
-
-    algo = SGD(gt_dict, data_params, param_inits, variable_ops_construction,
+    algo = SGD(data_params, param_inits, variable_ops_construction, gt_dict=gt_dict,
                 use_same_init_for_network=True, loss='squared',
                 evaluation_metric=None, eta='decay', c_prime=c_prime, t_o=t_o)
     return algo
+
+
 
 def set_algo_states(algo, varname, value):
     """
@@ -120,12 +137,22 @@ def set_algo_states(algo, varname, value):
         print('Variable %s access is not implemented' %varname)
         exit(0)
 
+#############################################
+############## training on real data
+# def train_and_get_dict(algo, train_steps=1000, verbose=True):
+#     learned_weights = algo.train(train_steps, verbose)[1]
+#     filter_size = np.power(learned_weights.shape[1], 0.5)
+#     print('filter size %f' %filter_size)
+#     return np.reshape(learned_weights, shape=[len(learned_weights), filter_size, filter_size])
+
+#############################################
+############## training on simulated data
 
 def train_over_runs(algo, n_runs=10, train_steps=1000, verbose=True):
     # run algorithm n_runs times with same inits (if use_same_init_for_network is True)
     evaluations_over_runs = list()
     for run in range(n_runs):
-        evaluations_over_runs.append(algo.train(train_steps, verbose))
+        evaluations_over_runs.append(algo.train(train_steps, verbose)[0])
     avg_evals = np.mean(np.array(evaluations_over_runs), axis=0)
     std_evals = np.std(np.array(evaluations_over_runs), axis=0)
     return avg_evals, std_evals
