@@ -53,11 +53,12 @@ def batch_mnist_data_generator(batch_size):
 #     pass
 
 def batch_cifar10_data_generator(batch_size, filter_size):
-    (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data() # data shape n_samples by 32-32-3 (documentation in keras wrong)
     batch_data = list()
     train_size = len(x_train)
-    (dim_x, dim_y) = x_train.shape[2], x_train.shape[3]
+    (dim_x, dim_y) = x_train.shape[1], x_train.shape[2]
     for count in range(batch_size):
+        #print('x dim and y dim are %d and %d'%(dim_x, dim_y))
         batch_data.append(sample_patch(x_train[count%train_size], dim_x, dim_y, filter_size))
     return batch_data
 
@@ -65,9 +66,10 @@ def batch_cifar10_data_generator(batch_size, filter_size):
 
 ###### random sampling
 def sample_patch(data_pt, dim_x, dim_y, filter_size):
-    ridx_x = np.random.choice(dim_x-filter_size, size=1)
-    ridx_y = np.random.choice(dim_y-filter_size, size=1)
-    data_downsampled = data_pt[:, ridx_x, ridx_y]
+    ridx_x = np.random.choice(dim_x-filter_size, size=1)[0]
+    ridx_y = np.random.choice(dim_y-filter_size, size=1)[0]
+    #print(data_pt.shape)
+    data_downsampled = data_pt[ridx_x:(ridx_x+filter_size), ridx_y:(ridx_y+filter_size), :]
 
     return data_downsampled.flatten()
 

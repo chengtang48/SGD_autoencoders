@@ -4,6 +4,7 @@ Usage: exp.py <algo> <n_inits> [--paramname=ARG --paramvalues=<ARGS> --varname=A
 from docopt import docopt
 import matplotlib.pyplot as plt
 import numpy as np
+import functools
 import os
 from six.moves import cPickle as pickle
 from SGD_class import SGD
@@ -12,7 +13,7 @@ from variable_definition import autoencoder_ops
 from data_model_class import batch_sparse_dict_model_generator, batch_mnist_data_generator, batch_cifar10_data_generator
 ############### Global variables
 data_params = {'data_dim': 2, 'train_batch_size':1,
-                'model': 'sparse_dict', 'model_params':0.1}
+                'model': 'cifar10', 'model_params':8}
 #real_data_params = {'train_batch_size':1, 'model': 'cifar10', 'model_params':8}
 
 param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
@@ -33,17 +34,17 @@ def initialize_algo(arguments, use_real=False):
             data_params['model_params'] = float(arguments['--paramvalues'])
         else:
             data_params['model_params'] = int(arguments['--paramvalues'])
-
+    gt_dict = None
     if not use_real:
         gt_dict = ortho_group.rvs(data_params['data_dim']) # generate ground-truth dictionary
-    if use_real:
+    else:
         _, activation_fn, norm = param_inits['weights']
         if data_params['model']=='cifar10':
-            data_params['data_dim'] = 2*192 # 3 by 8 by 8
-            param_inits['weights'] = data_params['data_dim'], activation_fn, norm
+            data_params['data_dim'] = 192 # 3 by 8 by 8
+            param_inits['weights'] = 2*data_params['data_dim'], activation_fn, norm
         elif data_params['model']=='mnist':
-            data_params['data_dim'] = 2*784 # 28 by 28
-            param_inits['weights'] = data_params['data_dim'], activation_fn, norm
+            data_params['data_dim'] = 784 # 28 by 28
+            param_inits['weights'] = 2*data_params['data_dim'], activation_fn, norm
     if arguments['<algo>'] == 'original':
         if arguments['--paramname'] == 'learn_rate':
             argvalues = arguments['--paramvalues']
@@ -140,8 +141,11 @@ def set_algo_states(algo, varname, value):
 
 #############################################
 ############# Visualize filter activation pattern
-def train_and_get_activation_hist(algo, data_model, test_size, train_steps=1000, verbose=True):
-    learned_weights = algo.train(train_steps, verbose)[1]
+def train_and_plot_activation_hist(algo, data_model, test_size, train_steps=1000, verbose=True):
+    (weights, bias) = algo.train(train_steps, verbose)[1], algo.train(train_steps, verbose)[2]
+    def get_per_data_activation(data_pt):
+        return np.max(np.matmul(weights, data_pt)+bias, 0)
+    ###
     if data_model == 'sparse_dict':
         test_data = batch_sparse_dict_model_generator(algo.data_params['data_dim'],
                           algo.data_params['model_params'], test_size, gt_dict=algo.gt_dict)
@@ -150,21 +154,28 @@ def train_and_get_activation_hist(algo, data_model, test_size, train_steps=1000,
     elif data_model == 'cifar10':
         test_data = batch_cifar10_data_generator(test_size, algo.data_params['model_params'])
 
-    
+    hist_array = functools.reduce(lambda a,b: np.add(a,b), list(map(get_per_data_activation, test_data)))
+    ## plot histogram
+    plt.hist(hist_array)
+    plt.show()
 
 
 #############################################
 ############## training on real data
 def train_and_visualize_dict(algo, train_steps=1000, verbose=True):
     learned_weights = algo.train(train_steps, verbose)[1]
-    filter_size = np.power(learned_weights.shape[1], 0.5)
+    if algo.data_params['model'] == 'cifar10':
+        filter_size = int(algo.data_params['model_params'])
+    elif algo.data_params['model'] == 'mnist':
+        filter_size = 784
     print('filter size %f' %filter_size)
-    learned_filters = np.reshape(learned_weights, shape=[len(learned_weights), filter_size, filter_size, -1])
+    learned_filters = np.reshape(learned_weights, [len(learned_weights), filter_size, filter_size, -1])
     ## plot all filters
-    plt.subplots(len(learned_filters))
-    for idx, ax in enumerate(axes):
+    fig, axes = plt.subplots(len(learned_filters),1)
+    for idx in range(len(learned_filters)):
         ## use RGB channels
-        ax.imageshow(learned_filters[idx])
+        axes[idx].imshow(learned_filters[idx])
+    fig.savefig('test_fig.png')
 
 
 #############################################
@@ -340,8 +351,9 @@ def maybe_pickle(dataname, data = None, force = False, verbose = True):
 if __name__ == '__main__':
     arguments = docopt(__doc__)
     print(arguments['--paramvalues'])
-    algo = initialize_algo(arguments)
-    if '--varname' in arguments:
+    algo = initialize_algo(arguments, use_real=True)
+    if arguments['--values']:
+        print('pass')
         varname = arguments['--varname']
         value_list = arguments['--values']
         if varname != 'learn_rate':
@@ -350,9 +362,10 @@ if __name__ == '__main__':
             value_list = [x for x in value_list.split(':')]
             #print('value list', value_list)
         #train_and_plot(algo, varname, value_list, n_runs=10, train_steps=1000, verbose=False)
-        n_inits = arguments['<n_inits>']
+    n_inits = arguments['<n_inits>']
         # train_all_and_plot(int(n_inits), arguments, varname, value_list,
         #                             n_runs=10, train_steps=1000, verbose=False)
-        train_all_and_pickle(int(n_inits), arguments, varname, value_list,
-                                    n_runs=10, train_steps=1000, verbose=False)
+        # train_all_and_pickle(int(n_inits), arguments, varname, value_list,
+        #                             n_runs=10, train_steps=1000, verbose=False)
+    train_and_visualize_dict(algo, train_steps=1000, verbose=True)
     ## run the algorithm with n_inits number of different random inits

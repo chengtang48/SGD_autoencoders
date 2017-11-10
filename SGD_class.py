@@ -132,10 +132,11 @@ class SGD(object):
 		## add variables to computation graph with desired intial values
 		self.weights, self.init_weights_, self.bias, self.init_bias_, self.xhat, self.x = self.add_variables_to_graph()
 		## add initial error
-		if self.gt_dict:
+		if self.gt_dict is not None:
+			print(self.gt_dict)
 			score_init = self.evaluation_metric(self.init_weights_, self.gt_dict)
 			evaluations.append(score_init)
-		print('Evaluation at init %f' %score_init)
+			print('Evaluation at init %f' %score_init)
 
 		train_op = self.get_train_op() ## define optimization op
 		if bool(self.bbatch_size) or self.use_mini_batch:
@@ -149,6 +150,7 @@ class SGD(object):
 			sess.run(tf.global_variables_initializer())
 			for step in range(train_steps):
 				self.mini_batch = self.data_generator(self.train_batch_size)
+				#print('mini-batch shape', self.mini_batch[0].shape)
 				#init_weights_ = sess.run(init_weights)
 				_, weights_, bias_ = sess.run([train_op,
 				       self.weights, self.bias], feed_dict={self.x: self.mini_batch})
@@ -172,9 +174,10 @@ class SGD(object):
 				if verbose:
 					epoch = train_steps / 20
 					if step % epoch == 0:
-						print('Training at %d th epoch' %(step/20+1))
-						print('Current evaluation: %f' %score_now)
-		return evaluations, weights_
+						print('Training at %d th epoch' %(step/epoch+1))
+						if self.gt_dict is not None:
+							print('Current evaluation: %f' %score_now)
+		return evaluations, weights_, bias_
 
 ####
 def get_loss(x, xhat, loss='squared'):
