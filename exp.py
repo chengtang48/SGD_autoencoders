@@ -9,6 +9,7 @@ from six.moves import cPickle as pickle
 from SGD_class import SGD
 from scipy.stats import ortho_group #generator for random orthogonal matrix
 from variable_definition import autoencoder_ops
+from data_model_class import batch_sparse_dict_model_generator, batch_mnist_data_generator, batch_cifar10_data_generator
 ############### Global variables
 data_params = {'data_dim': 2, 'train_batch_size':1,
                 'model': 'sparse_dict', 'model_params':0.1}
@@ -138,12 +139,33 @@ def set_algo_states(algo, varname, value):
         exit(0)
 
 #############################################
+############# Visualize filter activation pattern
+def train_and_get_activation_hist(algo, data_model, test_size, train_steps=1000, verbose=True):
+    learned_weights = algo.train(train_steps, verbose)[1]
+    if data_model == 'sparse_dict':
+        test_data = batch_sparse_dict_model_generator(algo.data_params['data_dim'],
+                          algo.data_params['model_params'], test_size, gt_dict=algo.gt_dict)
+    elif data_model == 'mnist':
+        test_data = batch_mnist_data_generator(test_size)
+    elif data_model == 'cifar10':
+        test_data = batch_cifar10_data_generator(test_size, algo.data_params['model_params'])
+
+    
+
+
+#############################################
 ############## training on real data
-# def train_and_get_dict(algo, train_steps=1000, verbose=True):
-#     learned_weights = algo.train(train_steps, verbose)[1]
-#     filter_size = np.power(learned_weights.shape[1], 0.5)
-#     print('filter size %f' %filter_size)
-#     return np.reshape(learned_weights, shape=[len(learned_weights), filter_size, filter_size])
+def train_and_visualize_dict(algo, train_steps=1000, verbose=True):
+    learned_weights = algo.train(train_steps, verbose)[1]
+    filter_size = np.power(learned_weights.shape[1], 0.5)
+    print('filter size %f' %filter_size)
+    learned_filters = np.reshape(learned_weights, shape=[len(learned_weights), filter_size, filter_size, -1])
+    ## plot all filters
+    plt.subplots(len(learned_filters))
+    for idx, ax in enumerate(axes):
+        ## use RGB channels
+        ax.imageshow(learned_filters[idx])
+
 
 #############################################
 ############## training on simulated data
@@ -310,6 +332,7 @@ def maybe_pickle(dataname, data = None, force = False, verbose = True):
             data = pickle.load(f)
 
     return data
+
 
 
 
