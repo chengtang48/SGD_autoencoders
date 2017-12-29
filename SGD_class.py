@@ -18,7 +18,7 @@ class SGD(object):
 					 variable_ops_construction, gt_dict=None, use_same_init_for_network=True,
 	                 loss='squared', evaluation_metric='None',
 					 eta=None, c_prime=None, t_o=None):
-
+		tf.reset_default_graph()
 		self.data_generator = DataGenerator(data_params)
 		self.train_batch_size = data_params['train_batch_size']
 		self.gt_dict = gt_dict
@@ -131,6 +131,7 @@ class SGD(object):
 		evaluations = list()
 		## add variables to computation graph with desired intial values
 		self.weights, self.init_weights_, self.bias, self.init_bias_, self.xhat, self.x = self.add_variables_to_graph()
+		#print('initial weights', self.init_weights_)
 		## add initial error
 		if self.gt_dict is not None:
 			print(self.gt_dict)
@@ -172,9 +173,14 @@ class SGD(object):
 					score_now = self.evaluation_metric(weights_, self.gt_dict)
 					evaluations.append(score_now)
 				if verbose:
-					epoch = train_steps / 20
-					if step % epoch == 0:
-						print('Training at %d th epoch' %(step/epoch+1))
+					if train_steps > 20:
+						epoch = train_steps / 20
+						if step % epoch == 0:
+							print('Training at %d th epoch' %(step/epoch+1))
+							if self.gt_dict is not None:
+								print('Current evaluation: %f' %score_now)
+					else:
+						print('Training at %d th iteration' %step)
 						if self.gt_dict is not None:
 							print('Current evaluation: %f' %score_now)
 		return evaluations, weights_, bias_

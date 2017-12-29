@@ -3,7 +3,8 @@ from scipy.stats import ortho_group #generator for random orthogonal matrix
 from sklearn.preprocessing import normalize
 from sklearn.datasets import fetch_mldata
 from keras.datasets import cifar10
-
+import matplotlib.pyplot as plt
+#####
 class DataGenerator(object):
     def __init__(self, data_params, gt=None):
         self.data_dim = data_params['data_dim']
@@ -45,9 +46,14 @@ def batch_sparse_dict_model_generator(dim, noise_bound, batch_size, gt_dict=None
     return list(map(map_function, [0]*batch_size))
 
 def batch_mnist_data_generator(batch_size):
-    mnist = fetch_mldata('MNIST original', data_home=custom_data_home)
+    mnist = fetch_mldata('MNIST original')
+    #print(mnist.data[0])
     ridx = np.random.choice(len(mnist.target), size=batch_size)
-    return list(mnist.data[ridx])
+    batch_data = mnist.data[ridx]
+    batch_data = contrast_normalize(batch_data)
+    batch_data = whitening(contrast_normalize(batch_data), transform='zca')
+    assert not np.isnan(batch_data).any(), 'mini batch contains illegal value!'
+    return list(batch_data)
 
 # def batch_norb_data_generator():
 #     pass
@@ -60,8 +66,21 @@ def batch_cifar10_data_generator(batch_size, filter_size):
     for count in range(batch_size):
         #print('x dim and y dim are %d and %d'%(dim_x, dim_y))
         batch_data.append(sample_patch(x_train[count%train_size], dim_x, dim_y, filter_size))
-    return batch_data
+    batch_data = contrast_normalize(np.array(batch_data))
+    batch_data = whitening(batch_data, transform='zca')
+    return list(batch_data)
 
+def test_plot(filter_size):
+    (x_train, y_train), (x_test, y_test) = cifar10.load_data() # data shape n_samples by 32-32-3 (documentation in keras wrong)
+    (dim_x, dim_y) = x_train.shape[1], x_train.shape[2]
+    fig, ax = plt.subplots(5,5)
+
+    for i in range(5):
+        for j in range(5):
+            patch = sample_patch(x_train[0], dim_x, dim_y, filter_size)
+            ax[i,j].set_axis_off()
+            ax[i,j].imshow(patch.reshape(filter_size, filter_size, 3))
+    plt.show()
 
 
 ###### random sampling
@@ -85,10 +104,17 @@ def contrast_normalize(batch_data):
 
 def whitening(batch_data, transform='pca'):
     covariance = 1.0/len(batch_data)*np.matmul(np.transpose(batch_data), batch_data)
-    V,d,V_T = np.linalg.svd(covariance, full_matrices=True)
+    #V,d,V_T = np.linalg.svd(covariance, full_matrices=True)
+    d, V = np.linalg.eigh(covariance)
+    offset = 10e-5
     if transform == 'pca':
-        return np.matmul(np.matmul(batch_data, V), np.power(d, -0.5))
+        return np.matmul(np.matmul(batch_data, V), np.diag(1.0/np.sqrt(d+offset)))
     elif transform == 'zca':
-        return np.matmul(np.matmul(np.matmul(batch_data, V), np.power(d, -0.5)), V)
+        return np.matmul(np.matmul(np.matmul(batch_data, V), np.diag(1.0/np.sqrt(d+offset))), V.T)
     else:
         print('The method %s is not supported for whitening'%transform)
+
+
+
+if __name__ == '__main__':
+    test_plot(8)

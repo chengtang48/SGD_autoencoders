@@ -9,7 +9,7 @@ def autoencoder_ops(weight_params_inits, data_params, bias_trainable=True,
     train_batch_size = data_params['train_batch_size']
     ## parameter initialization
     if init_weights is None:
-        init_weights = tf.random_normal([width, data_dim], dtype=tf.float64) # init random weights
+        init_weights = 0.01*tf.random_normal([width, data_dim], dtype=tf.float64) # init random weights
         with tf.Session() as sess:
             init_weights_ = sess.run(init_weights)
     else:

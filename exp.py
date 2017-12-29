@@ -12,12 +12,13 @@ from scipy.stats import ortho_group #generator for random orthogonal matrix
 from variable_definition import autoencoder_ops
 from data_model_class import batch_sparse_dict_model_generator, batch_mnist_data_generator, batch_cifar10_data_generator
 ############### Global variables
-data_params = {'data_dim': 2, 'train_batch_size':1,
-                'model': 'cifar10', 'model_params':8}
+data_params = {'data_dim': 2, 'train_batch_size':500,
+                'model': 'mnist', 'model_params':8}
 #real_data_params = {'train_batch_size':1, 'model': 'cifar10', 'model_params':8}
 
-param_inits = {'weights':(2*data_params['data_dim'], 'relu', 0),
-               'bias': (None, False, None)
+param_inits = {'weights':(2*data_params['data_dim'], 'relu', 2),
+               #'bias': (500, False, 500)
+               'bias':(None, False, None)
                  }
 # param_inits = {'weights':(4, 'relu', 0),
 #                'bias': (None, False, None)}
@@ -41,10 +42,10 @@ def initialize_algo(arguments, use_real=False):
         _, activation_fn, norm = param_inits['weights']
         if data_params['model']=='cifar10':
             data_params['data_dim'] = 192 # 3 by 8 by 8
-            param_inits['weights'] = 2*data_params['data_dim'], activation_fn, norm
+            param_inits['weights'] = 5*data_params['data_dim'], activation_fn, norm
         elif data_params['model']=='mnist':
             data_params['data_dim'] = 784 # 28 by 28
-            param_inits['weights'] = 2*data_params['data_dim'], activation_fn, norm
+            param_inits['weights'] = 1000, activation_fn, norm
     if arguments['<algo>'] == 'original':
         if arguments['--paramname'] == 'learn_rate':
             argvalues = arguments['--paramvalues']
@@ -141,11 +142,13 @@ def set_algo_states(algo, varname, value):
 
 #############################################
 ############# Visualize filter activation pattern
-def train_and_plot_activation_hist(algo, data_model, test_size, train_steps=1000, verbose=True):
+def train_and_plot_activation_hist(algo, test_size, train_steps=1000, verbose=True):
     (weights, bias) = algo.train(train_steps, verbose)[1], algo.train(train_steps, verbose)[2]
+    print('bias', bias)
     def get_per_data_activation(data_pt):
         return np.max(np.matmul(weights, data_pt)+bias, 0)
     ###
+    data_model = algo.data_params['model']
     if data_model == 'sparse_dict':
         test_data = batch_sparse_dict_model_generator(algo.data_params['data_dim'],
                           algo.data_params['model_params'], test_size, gt_dict=algo.gt_dict)
@@ -154,7 +157,7 @@ def train_and_plot_activation_hist(algo, data_model, test_size, train_steps=1000
     elif data_model == 'cifar10':
         test_data = batch_cifar10_data_generator(test_size, algo.data_params['model_params'])
 
-    hist_array = functools.reduce(lambda a,b: np.add(a,b), list(map(get_per_data_activation, test_data)))
+    hist_array = 1.0/len(test_data)*functools.reduce(lambda a,b: np.add(a,b), list(map(get_per_data_activation, test_data)))
     ## plot histogram
     plt.hist(hist_array)
     plt.show()
@@ -167,14 +170,30 @@ def train_and_visualize_dict(algo, train_steps=1000, verbose=True):
     if algo.data_params['model'] == 'cifar10':
         filter_size = int(algo.data_params['model_params'])
     elif algo.data_params['model'] == 'mnist':
-        filter_size = 784
+        filter_size = 28
+    else:
+        print('Dataset %s is not implemented in our experiment' %algo.data_params['model'])
     print('filter size %f' %filter_size)
-    learned_filters = np.reshape(learned_weights, [len(learned_weights), filter_size, filter_size, -1])
+    if algo.data_params['model'] == 'cifar10':
+        learned_filters = np.reshape(learned_weights, [len(learned_weights), filter_size, filter_size, -1])
+    elif algo.data_params['model'] == 'mnist':
+        learned_filters = np.reshape(learned_weights, [len(learned_weights), filter_size, filter_size])
     ## plot all filters
-    fig, axes = plt.subplots(len(learned_filters),1)
-    for idx in range(len(learned_filters)):
-        ## use RGB channels
-        axes[idx].imshow(learned_filters[idx])
+    #fig, ax = plt.subplots(12,8)
+    x_length = filter_size
+    y_length = filter_size
+    fig, ax = plt.subplots(x_length, y_length)
+    idx = 0
+    for i in range(x_length):
+        for j in range(y_length):
+            ## use RGB channels
+            ax[i,j].set_axis_off()
+            if algo.data_params['model'] == 'mnist':
+                ax[i,j].imshow(learned_filters[idx], cmap='gray')
+            elif algo.data_params['model'] == 'cifar10':
+                ax[i,j].imshow(learned_filters[idx])
+            #print(learned_filters[idx,:,:,0])
+            idx += 1
     fig.savefig('test_fig.png')
 
 
@@ -367,5 +386,6 @@ if __name__ == '__main__':
         #                             n_runs=10, train_steps=1000, verbose=False)
         # train_all_and_pickle(int(n_inits), arguments, varname, value_list,
         #                             n_runs=10, train_steps=1000, verbose=False)
-    train_and_visualize_dict(algo, train_steps=1000, verbose=True)
+    #train_and_visualize_dict(algo, train_steps=1000, verbose=True)
+    train_and_plot_activation_hist(algo, 1000, train_steps=1000, verbose=True)
     ## run the algorithm with n_inits number of different random inits
