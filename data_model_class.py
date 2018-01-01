@@ -3,8 +3,14 @@ from scipy.stats import ortho_group #generator for random orthogonal matrix
 from sklearn.preprocessing import normalize
 from sklearn.datasets import fetch_mldata
 from keras.datasets import cifar10
+from scipy.misc import face
 import matplotlib.pyplot as plt
 #####
+## Todo:
+## 1. add racoon face dataset for impainting (see sklearn example)
+## 2. add compatibility with fixed dataset (instead of pure online training model)
+## 3. add small patch sampling operation (helper function in sklearn)
+##################
 class DataGenerator(object):
     def __init__(self, data_params, gt=None):
         self.data_dim = data_params['data_dim']
@@ -15,6 +21,11 @@ class DataGenerator(object):
             assert self.model_params, 'Please provide parameters for model construction!'
         elif self.model_name == 'cifar10':
             assert self.model_params, 'Please provide filter size'
+        elif self.model_name == 'racoon_face':
+            assert self.model_params, 'Please provide parameters for data extraction'
+        else:
+            print('This model is not recognized!')
+            exit(0)
 
     def __call__(self, batch_size):
         if self.model_name == 'sparse_dict':
@@ -23,6 +34,11 @@ class DataGenerator(object):
             return batch_cifar10_data_generator(batch_size, self.model_params)
         elif self.model_name == 'mnist':
             return batch_mnist_data_generator(batch_size)
+        elif self.model_name == 'racoon_face':
+            return batch_racoon_face_data_generator(batch_size,
+                            self.model_params['filter_size'], self.model_params['which_part'])
+
+
 
 
 
@@ -69,6 +85,41 @@ def batch_cifar10_data_generator(batch_size, filter_size):
     batch_data = contrast_normalize(np.array(batch_data))
     batch_data = whitening(batch_data, transform='zca')
     return list(batch_data)
+
+def batch_racoon_face_data_generator(batch_size, filter_size, which_part):
+    face = face(gray=True).copy()
+    # Convert from uint8 representation with values between 0 and 255 to
+    # a floating point representation with values between 0 and 1.
+    face = face / 255.
+    # downsample for higher speed
+    face = face[::2, ::2] + face[1::2, ::2] + face[::2, 1::2] + face[1::2, 1::2]
+    face /= 4.0
+    height, width = face.shape
+    if which_part == 'train':
+        # Extract all reference patches from the left half of the image
+        print('Extracting reference patches...')
+        t0 = time()
+        patch_size = (filter_size, filter_size)
+        data = extract_patches_2d(face[:, :width // 2], patch_size)
+        data = data.reshape(data.shape[0], -1)
+        data -= np.mean(data, axis=0)
+        data /= np.std(data, axis=0)
+        ridx = np.random.choice(data.shape[0], size=batch_size)
+        print('done in %.2fs.' % (time() - t0))
+        return list(data[ridx])
+    elif which_part == 'test':
+        print('Extracting noisy patches... ')
+        t0 = time()
+        right_half = face[:, width // 2:].copy()
+        right_half += 0.075 * np.random.randn(height, width // 2)
+        data = extract_patches_2d(right_half, patch_size)
+        data = data.reshape(data.shape[0], -1)
+        #intercept = np.mean(data, axis=0)
+        #data -= intercept
+        print('done in %.2fs.' % (time() - t0))
+        return list(data)
+
+
 
 def test_plot(filter_size):
     (x_train, y_train), (x_test, y_test) = cifar10.load_data() # data shape n_samples by 32-32-3 (documentation in keras wrong)
