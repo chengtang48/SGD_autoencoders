@@ -34,5 +34,5 @@ def autoencoder_ops(weight_params_inits, data_params, bias_trainable=True,
     ## decoder
     if activation_fn == 'relu':
         # train_batch_size by data_dim
-        xhat = tf.squeeze(tf.matmul(tf.nn.relu(hidden), weights))
+        xhat = tf.matmul(tf.nn.relu(hidden), weights)
     return weights, init_weights_, bias, init_bias_, xhat, x
