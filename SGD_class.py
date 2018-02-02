@@ -1,8 +1,12 @@
-import numpy as np
 import tensorflow as tf
+import numpy as np
 from sklearn.preprocessing import normalize
 from data_model_class import DataGenerator
-
+######## Todo ####
+## 1. Correct bug with loss definition
+## 2. Add norm-decaying and other updated ops
+## 3. Check if sine/cosine error are up to date (change to proper names)
+################
 class SGD(object):
 	"""
 	Example
@@ -17,7 +21,7 @@ class SGD(object):
 	def __init__(self, data_params, param_inits,
 					 variable_ops_construction, gt_dict=None, use_same_init_for_network=True,
 	                 loss='squared', evaluation_metric='None',
-					 eta=None, c_prime=None, t_o=None):
+					 eta='inverse_time_decay', c_prime=None, t_o=None):
 		tf.reset_default_graph()
 		self.data_generator = DataGenerator(data_params)
 		self.train_batch_size = data_params['train_batch_size']
@@ -27,7 +31,7 @@ class SGD(object):
 		self.data_params = data_params
 		#self.control_norm = param_inits['weights']
 		(self.init_b_batch_size,self.use_mini_batch, self.bbatch_size) = param_inits['bias']
-		self.bias_trainable = True
+		self.bias_trainable = True # by default, bias is trainable
 		if bool(self.bbatch_size) or self.use_mini_batch:
 			self.bias_trainable = False
 
@@ -35,8 +39,8 @@ class SGD(object):
 		if bool(self.norm):
 			self.rescale_param = 1/float(self.norm**2) - 1
 		## initialze weight and bias
-		self.init_weights = None
-		self.init_bias = None
+		self.init_weights_ = None
+		self.init_bias_ = None
 		self.use_same_init_for_network = use_same_init_for_network
 		# if use_same_init_for_network:
 		# 	(self.weights, self.init_weights_, self.bias_init, self.init_bias_,
@@ -46,7 +50,9 @@ class SGD(object):
 		# 	(self.weights, init_weights_, self.bias_init, init_bias_,
 		#        self.xhat, self.place_holder) = self.initialize_variables(variable_ops_construction,
 		#                                      init_b_batch_size, use_bias_init)
-		self.initialize_parameters() #get self.init_weights_ and self.init_bias_
+		######## initialize network parameters
+		#####  get self.init_weights_ and self.init_bias_
+		self.initialize_parameters()
 		self.variable_ops_construction = variable_ops_construction
 		self.loss = loss
 		if not evaluation_metric:
@@ -58,42 +64,60 @@ class SGD(object):
 		self.reinitialize = False
 
 
-
 	def initialize_parameters(self):
-		if not self.use_same_init_for_network:
-			self.init_weights_ = None
+		if self.init_weights_ is None or not self.use_same_init_for_network:
+			#### initialize with i.i.d. Gaussian random variables
+			## Todo: Add option to initialize with data
+			init_weights = tf.random_normal([self.width, self.data_params['data_dim']], dtype=tf.float64)
 			self.init_bias_ = None
-		else:
-			init_weights = tf.random_normal([self.width, self.data_params['data_dim']], dtype=tf.float64) # init random weights
-			self.init_bias_ = None
-	        if not bool(self.init_b_batch_size):
-				## if sample based init is disabled
-	            self.init_bias_ = np.zeros(self.width)
-	        else:
+			if not bool(self.init_b_batch_size):
+				## if sample based init is disabled, use zero bias by default
+				self.init_bias_ = np.zeros(self.width)
+			else:
 				init_batch_data = self.data_generator(self.init_b_batch_size)
 				assert self.norm, 'Norm is not provided to initialize bias!'
 				init_bias = bias_init(init_weights, self.norm, init_batch_data)
 
 			## parameter initialization
-	        with tf.Session() as sess:
-	            self.init_weights_ = sess.run(init_weights)
-	            if self.init_bias_ is None:
-	                self.init_bias_ = sess.run(init_bias)
+			with tf.Session() as sess:
+				self.init_weights_ = sess.run(init_weights)
+				if self.init_bias_ is None:
+					self.init_bias_ = sess.run(init_bias)
+	# def initialize_parameters(self):
+	# 	if not self.use_same_init_for_network:
+	# 		self.init_weights_ = None
+	# 		self.init_bias_ = None
+	# 	else:
+	# 		# initialize with i.i.d. Gaussian random variables
+	# 		init_weights = tf.random_normal([self.width, self.data_params['data_dim']], dtype=tf.float64)
+	# 		self.init_bias_ = None
+	#         if not bool(self.init_b_batch_size):
+	# 			## if sample based init is disabled, use zero bias by default
+	#             self.init_bias_ = np.zeros(self.width)
+	#         else:
+	# 			init_batch_data = self.data_generator(self.init_b_batch_size)
+	# 			assert self.norm, 'Norm is not provided to initialize bias!'
+	# 			init_bias = bias_init(init_weights, self.norm, init_batch_data)
+	#
+	# 		## parameter initialization
+	#         with tf.Session() as sess:
+	#             self.init_weights_ = sess.run(init_weights)
+	#             if self.init_bias_ is None:
+	#                 self.init_bias_ = sess.run(init_bias)
 
 	def add_variables_to_graph(self):
 		## update parameters maintained by algorithm
-		self.param_inits['weights'] = self.width, self.activation_fn, self.norm
-		self.param_inits['bias'] = self.init_b_batch_size,self.use_mini_batch, self.bbatch_size
-		self.data_params['train_batch_size'] = self.train_batch_size
-		return self.variable_ops_construction(self.param_inits['weights'], self.data_params,
-		            bias_trainable=self.bias_trainable, init_weights=self.init_weights_ ,
-					init_bias=self.init_bias_)
+		#self.param_inits['weights'] = self.width, self.activation_fn, self.norm
+		#self.param_inits['bias'] = self.init_b_batch_size,self.use_mini_batch, self.bbatch_size
+		#self.data_params['train_batch_size'] = self.train_batch_size
+		return self.variable_ops_construction(self.train_batch_size, self.init_weights_ ,
+					self.init_bias_, bias_trainable=self.bias_trainable)
 
 	def get_eta(self):
 		if not self.eta_fn:
 			eta = 0.001
 			self.global_step = tf.Variable(0, trainable=False)
-		elif self.eta_fn == 'decay':
+		elif self.eta_fn == 'inverse_time_decay':
 			c_prime, t_o = self.eta_params
 			learning_rate = c_prime
 			decay_steps = 1
@@ -104,10 +128,6 @@ class SGD(object):
 			self.global_step = tf.Variable(t_o, trainable=False)
 			eta = self.eta_fn(self.global_step)
 		return eta
-
-
-	def get_train_op(self):
-		return tf.train.GradientDescentOptimizer(self.get_eta()).minimize(get_loss(self.x, self.xhat))
 
 	def get_update_bias_op(self):
 		#width,_,_ = self.param_inits['weights']
@@ -127,10 +147,11 @@ class SGD(object):
 
 	def train(self, train_steps, verbose=True):
 		if self.reinitialize:
+			self.use_same_init_for_network = False
 			self.initialize_parameters()
 		evaluations = list()
 		## add variables to computation graph with desired intial values
-		self.weights, self.init_weights_, self.bias, self.init_bias_, self.xhat, self.x = self.add_variables_to_graph()
+		weights, bias, xhat, batch_x = self.add_variables_to_graph()
 		#print('initial weights', self.init_weights_)
 		## add initial error
 		if self.gt_dict is not None:
@@ -139,34 +160,36 @@ class SGD(object):
 			evaluations.append(score_init)
 			print('Evaluation at init %f' %score_init)
 
-		train_op = self.get_train_op() ## define optimization op
+		######## define optimization ops
+		train_op = tf.train.GradientDescentOptimizer(self.get_eta()).minimize(get_loss(batch_x, xhat, loss='squared'))
 		if bool(self.bbatch_size) or self.use_mini_batch:
 			bias_update_op, bbatch_x = self.get_update_bias_op() ## define operation for bias update
 		increment_global_step_op = get_increment_global_step_op(self.global_step)
 		if bool(self.norm):
 			## define row normalization if control_norm is not False (0)
+			## Todo: modify to implement norm decay
 			row_normalize_op = get_row_normalize_op(self.weights, self.norm)
-		########
+		######## execute stepwise optimization
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
 			for step in range(train_steps):
-				self.mini_batch = self.data_generator(self.train_batch_size)
+				mini_batch = self.data_generator(self.train_batch_size)
 				#print('mini-batch shape', self.mini_batch[0].shape)
 				#init_weights_ = sess.run(init_weights)
-				_, weights_, bias_ = sess.run([train_op,
-				       self.weights, self.bias], feed_dict={self.x: self.mini_batch})
+				_, weights_, bias_ = sess.run([train_op, weights, bias],
+				                              feed_dict={batch_x: mini_batch})
 				if bool(self.norm):
-					_, weights_ = sess.run([row_normalize_op, self.weights])
+					_, weights_ = sess.run([row_normalize_op, weights])
 
 				## update bias using designed method if newton update is enabled
 				if self.use_mini_batch or bool(self.bbatch_size):
 					if self.use_mini_batch:
-						_, bias_ =sess.run([bias_update_op, self.bias],
-                              feed_dict={bbatch_x: self.mini_batch})
+						_, bias_ =sess.run([bias_update_op, bias],
+                              feed_dict={bbatch_x: mini_batch})
 					else:
 						# fresh sample
 						bbatch = self.data_generator(self.bbatch_size)
-						_, bias_ =sess.run([bias_update_op, self.bias],
+						_, bias_ =sess.run([bias_update_op, bias],
                               feed_dict={bbatch_x: bbatch})
 				n_steps = sess.run(increment_global_step_op)
 				if self.gt_dict:
@@ -188,7 +211,8 @@ class SGD(object):
 ####
 def get_loss(x, xhat, loss='squared'):
 	if loss == 'squared':
-		return tf.reduce_mean(tf.square(x - xhat))
+		return tf.reduce_mean(tf.reduce_sum(tf.square(x - x_hat), axis=1))
+		#return tf.reduce_mean(tf.square(x - xhat))
 	else:
 		print('loss %s not implemented' %loss)
 
